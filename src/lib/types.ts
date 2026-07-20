@@ -35,6 +35,7 @@ export interface Participant {
   paymentStatus: PaymentStatus;
   registrationStatus: RegistrationStatus;
   createdAt: string;
+  attendance?: string[];
 }
 
 export type NewParticipantInput = Omit<

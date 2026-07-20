@@ -2,17 +2,41 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper functions to check authentication and roles
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isStaff() {
+      return isAuthenticated() && 
+        (getUserData().role == 'admin' || getUserData().role == 'registration-officer');
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
     // Anyone can create a registration (public registration form) and read
-    // their own participant record by ID (needed to display the badge page).
-    // Updates/deletes are NOT allowed from the client — those go through the
-    // future admin/registration-officer roles once auth is added.
+    // a participant record by ID (needed to display the badge page).
+    // Updates are allowed for staff, and deletes only for admins.
     match /participants/{participantId} {
       allow create: if request.resource.data.keys().hasAll([
         "firstName", "lastName", "email", "phone", "organization",
         "country", "category", "badgeNumber", "registrationStatus"
       ]);
       allow read: if true;
-      allow update, delete: if false;
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // Users and roles
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isStaff());
+      allow write: if isAdmin();
     }
 
     // Badge number counter — only server-side transactions increment it.
@@ -22,3 +46,4 @@ service cloud.firestore {
     }
   }
 }
+

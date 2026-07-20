@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { useAuth } from "@/lib/auth";
 
 export default function SiteHeader() {
+  const { user, signOut } = useAuth();
+
   return (
-    <header className="border-b border-black/5 bg-white/80 backdrop-blur">
+    <header className="border-b border-black/5 bg-white/80 backdrop-blur sticky top-0 z-50">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -20,10 +25,33 @@ export default function SiteHeader() {
             </p>
           </div>
         </Link>
-        <nav className="flex items-center gap-2 text-sm">
+        <nav className="flex items-center gap-3 text-sm font-medium">
+          {user ? (
+            <>
+              <Link
+                href="/admin"
+                className="text-[var(--color-ink-soft)] hover:text-[var(--color-forest)] transition"
+              >
+                Dashboard
+              </Link>
+              <button
+                onClick={() => signOut()}
+                className="text-[var(--color-ink-soft)] hover:text-red-600 transition cursor-pointer"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="text-[var(--color-ink-soft)] hover:text-[var(--color-forest)] transition"
+            >
+              Staff Login
+            </Link>
+          )}
           <Link
             href="/register"
-            className="rounded-full bg-[var(--color-forest)] px-4 py-2 font-medium text-white transition hover:bg-[var(--color-forest-deep)]"
+            className="rounded-full bg-[var(--color-forest)] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[var(--color-forest-deep)]"
           >
             Register
           </Link>
@@ -32,3 +60,4 @@ export default function SiteHeader() {
     </header>
   );
 }
+
