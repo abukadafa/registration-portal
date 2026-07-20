@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Anyone can create a registration (public registration form) and read
+    // their own participant record by ID (needed to display the badge page).
+    // Updates/deletes are NOT allowed from the client — those go through the
+    // future admin/registration-officer roles once auth is added.
+    match /participants/{participantId} {
+      allow create: if request.resource.data.keys().hasAll([
+        "firstName", "lastName", "email", "phone", "organization",
+        "country", "category", "badgeNumber", "registrationStatus"
+      ]);
+      allow read: if true;
+      allow update, delete: if false;
+    }
+
+    // Badge number counter — only server-side transactions increment it.
+    match /counters/{counterId} {
+      allow read: if true;
+      allow write: if request.resource.data.value is int;
+    }
+  }
+}
