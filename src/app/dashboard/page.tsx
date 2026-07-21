@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import SiteHeader from "@/components/SiteHeader";
-import { db } from "@/lib/firebase";
+import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { getMockParticipants } from "@/lib/participants";
 
 export default function DashboardLookupPage() {
   const router = useRouter();
@@ -17,6 +18,19 @@ export default function DashboardLookupPage() {
     setError(null);
     setLoading(true);
     try {
+      if (!isFirebaseConfigured) {
+        const list = getMockParticipants();
+        const found = list.find((p) => p.email === email.trim().toLowerCase());
+        if (!found) {
+          setError("No registration found for that email.");
+          setLoading(false);
+          return;
+        }
+        router.push(`/badge/${found.id}`);
+        setLoading(false);
+        return;
+      }
+
       const snap = await getDocs(
         query(collection(db, "participants"), where("email", "==", email.trim().toLowerCase()))
       );

@@ -478,7 +478,7 @@ export default function AdminDashboardPage() {
       <main className="flex-1 px-6 py-10 max-w-7xl mx-auto w-full">
         {/* Mock Mode DB Reset Warning Banner */}
         {isMock && (
-          <div className="mb-6 rounded-2xl bg-amber-50 p-4 border border-amber-250 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="mb-6 rounded-2xl bg-amber-50 p-4 border border-amber-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="text-xs text-amber-800">
               <p className="font-semibold flex items-center gap-1.5 mb-0.5">
                 <span>⚠️</span> Developer Mock Mode Active
@@ -587,7 +587,7 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
               <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
-                <p className="text-xs uppercase tracking-wider text-amber-850 font-semibold">Pending Approval</p>
+                <p className="text-xs uppercase tracking-wider text-amber-800 font-semibold">Pending Approval</p>
                 <p className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold text-amber-600">
                   {pendingCount}
                 </p>
@@ -675,7 +675,7 @@ export default function AdminDashboardPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse text-sm">
                       <thead>
-                        <tr className="bg-black/2 border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
+                        <tr className="bg-black/[0.02] border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
                           <th className="p-4">Participant</th>
                           <th className="p-4">Badge ID / Date</th>
                           <th className="p-4">Category</th>
@@ -948,7 +948,7 @@ export default function AdminDashboardPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-sm">
                     <thead>
-                      <tr className="bg-black/2 border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
+                      <tr className="bg-black/[0.02] border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
                         <th className="p-4">Attendee</th>
                         <th className="p-4">Badge ID</th>
                         <th className="p-4">Category</th>
