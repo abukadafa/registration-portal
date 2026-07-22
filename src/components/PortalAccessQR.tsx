@@ -32,10 +32,6 @@ export default function PortalAccessQR() {
       <div className="p-2 bg-[var(--color-cream)] rounded-2xl flex items-center justify-center ring-4 ring-[var(--color-gold-light)]/20">
         <QRCodeCanvas value={registerUrl} size={150} />
       </div>
-
-      <p className="text-[10px] text-black/40 font-mono select-all">
-        {registerUrl}
-      </p>
     </div>
   );
 }
