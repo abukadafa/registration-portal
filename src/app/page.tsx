@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
+import PortalAccessQR from "@/components/PortalAccessQR";
 
 const stats = [
   { label: "Speakers", value: "15" },
@@ -70,25 +71,34 @@ export default function Home() {
         ))}
       </section>
 
-      {/* Schedule */}
-      <section className="mx-auto w-full max-w-6xl px-6 py-16">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl font-semibold text-[var(--color-ink)]">
-          Programme at a glance
-        </h2>
-        <div className="mt-6 grid gap-4 sm:grid-cols-5">
-          {schedule.map((s) => (
-            <div
-              key={s.day}
-              className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm"
-            >
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-widest text-[var(--color-gold)]">
-                {s.day} · {s.date}
-              </p>
-              <p className="mt-2 font-[family-name:var(--font-display)] text-base font-medium text-[var(--color-ink)]">
-                {s.title}
-              </p>
-            </div>
-          ))}
+
+      {/* Schedule & Portal Access QR Code */}
+      <section className="mx-auto w-full max-w-6xl px-6 py-16 grid gap-8 md:grid-cols-3">
+        {/* Schedule list */}
+        <div className="md:col-span-2">
+          <h2 className="font-[family-name:var(--font-display)] text-2xl font-semibold text-[var(--color-ink)]">
+            Programme at a glance
+          </h2>
+          <div className="mt-6 grid gap-4 sm:grid-cols-5">
+            {schedule.map((s) => (
+              <div
+                key={s.day}
+                className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm"
+              >
+                <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-widest text-[var(--color-gold)]">
+                  {s.day} · {s.date}
+                </p>
+                <p className="mt-2 font-[family-name:var(--font-display)] text-base font-medium text-[var(--color-ink)]">
+                  {s.title}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Scan to Register Card */}
+        <div className="flex flex-col justify-center">
+          <PortalAccessQR />
         </div>
       </section>
 

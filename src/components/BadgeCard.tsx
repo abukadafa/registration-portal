@@ -88,6 +88,16 @@ export default function BadgeCard({ participant }: { participant: Participant })
           </div>
           <QRCodeCanvas value={`9AACAA26:${participant.id}:${participant.badgeNumber}`} size={104} />
         </div>
+
+        {/* 1D Linear Barcode */}
+        <div className="mt-5 flex flex-col items-center justify-center border-t border-black/5 pt-5 text-center">
+          <span className="barcode-font text-[48px] text-[var(--color-forest)] select-none leading-none">
+            {`*${participant.badgeNumber}*`}
+          </span>
+          <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-widest text-[var(--color-ink-soft)] mt-1">
+            Scanner Code
+          </span>
+        </div>
       </div>
     </div>
   );
