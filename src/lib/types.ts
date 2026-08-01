@@ -36,6 +36,10 @@ export interface Participant {
   registrationStatus: RegistrationStatus;
   createdAt: string;
   attendance?: string[];
+  deleted?: boolean;
+  deleteReason?: string;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export type NewParticipantInput = Omit<

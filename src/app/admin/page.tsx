@@ -11,6 +11,9 @@ import {
   toggleAttendance,
   createParticipant,
   createParticipantsBulk,
+  updateParticipant,
+  softDeleteParticipant,
+  restoreParticipant,
 } from "@/lib/participants";
 import type { Participant, ParticipantCategory, RegistrationStatus, PaymentStatus, NewParticipantInput } from "@/lib/types";
 import Link from "next/link";
@@ -53,7 +56,23 @@ export default function AdminDashboardPage() {
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
   
   // Dashboard Tab state
-  const [activeTab, setActiveTab] = useState<"registrations" | "attendance">("registrations");
+  const [activeTab, setActiveTab] = useState<"registrations" | "attendance" | "recycle">("registrations");
+
+  // Edit Participant Modal states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("Mr.");
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editGender, setEditGender] = useState<"Male" | "Female" | "Prefer not to say">("Prefer not to say");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editOrg, setEditOrg] = useState("");
+  const [editCountry, setEditCountry] = useState("Nigeria");
+  const [editCategory, setEditCategory] = useState<ParticipantCategory>("Researcher");
+  const [editPayment, setEditPayment] = useState<PaymentStatus>("Pending");
+  const [editAccommodation, setEditAccommodation] = useState(false);
+  const [editAbstract, setEditAbstract] = useState(false);
+  const [submittingEdit, setSubmittingEdit] = useState(false);
 
   // Registration Manager filters
   const [search, setSearch] = useState("");
@@ -97,6 +116,9 @@ export default function AdminDashboardPage() {
       router.push("/login");
     } else if (user) {
       fetchData();
+      if (user.role !== "admin") {
+        setActiveTab("attendance");
+      }
     }
   }, [user, loading, router]);
 
@@ -121,13 +143,14 @@ export default function AdminDashboardPage() {
   }
 
   // Statistics for Registrations
-  const totalCount = participants.length;
-  const approvedCount = participants.filter((p) => p.registrationStatus === "Approved").length;
-  const pendingCount = participants.filter((p) => p.registrationStatus === "Pending Approval").length;
-  const rejectedCount = participants.filter((p) => p.registrationStatus === "Rejected").length;
+  const activeParticipants = participants.filter((p) => !p.deleted);
+  const totalCount = activeParticipants.length;
+  const approvedCount = activeParticipants.filter((p) => p.registrationStatus === "Approved").length;
+  const pendingCount = activeParticipants.filter((p) => p.registrationStatus === "Pending Approval").length;
+  const rejectedCount = activeParticipants.filter((p) => p.registrationStatus === "Rejected").length;
 
   // Filtered participants for Registrations Tab
-  const filteredParticipants = participants.filter((p) => {
+  const filteredParticipants = activeParticipants.filter((p) => {
     const nameMatch = `${p.firstName} ${p.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
       p.email.toLowerCase().includes(search.toLowerCase()) ||
       p.badgeNumber.toLowerCase().includes(search.toLowerCase()) ||
@@ -143,7 +166,10 @@ export default function AdminDashboardPage() {
   });
 
   // Approved participants (attendance applies only to approved ones)
-  const approvedParticipants = participants.filter((p) => p.registrationStatus === "Approved");
+  const approvedParticipants = participants.filter((p) => p.registrationStatus === "Approved" && !p.deleted);
+
+  // Deleted participants for Recycle Bin Tab
+  const deletedParticipants = participants.filter((p) => p.deleted === true);
 
   // Attendance Statistics for selected day
   const dailyPresentCount = approvedParticipants.filter(
@@ -181,20 +207,155 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // Handle delete
-  async function handleDelete(id: string) {
-    if (!window.confirm("Are you sure you want to permanently delete this participant record?")) {
+  // Handle soft delete
+  async function handleSoftDelete(id: string) {
+    const reason = window.prompt("Please enter the reason for deleting this registration:");
+    if (reason === null) return; // user cancelled
+    if (!reason.trim()) {
+      alert("A deletion reason is required.");
       return;
     }
+
     try {
-      await deleteParticipant(id);
-      setParticipants((prev) => prev.filter((p) => p.id !== id));
+      const operator = user?.email || "Unknown Admin";
+      await softDeleteParticipant(id, reason.trim(), operator);
+      
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                deleted: true,
+                deleteReason: reason.trim(),
+                deletedAt: new Date().toISOString(),
+                deletedBy: operator,
+              }
+            : p
+        )
+      );
+
       if (selectedParticipant && selectedParticipant.id === id) {
         setSelectedParticipant(null);
       }
-    } catch (err) {
-      alert("Failed to delete. Only admins are permitted to delete records.");
+      alert("Registration moved to the Recycle Bin.");
+    } catch (err: any) {
+      alert(err.message || "Failed to delete participant.");
       console.error(err);
+    }
+  }
+
+  // Handle restore from recycle bin
+  async function handleRestore(id: string) {
+    if (!window.confirm("Are you sure you want to restore this registration?")) {
+      return;
+    }
+
+    try {
+      await restoreParticipant(id);
+      
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                deleted: false,
+                deleteReason: undefined,
+                deletedAt: undefined,
+                deletedBy: undefined,
+              }
+            : p
+        )
+      );
+      alert("Registration successfully restored.");
+    } catch (err: any) {
+      alert(err.message || "Failed to restore participant.");
+      console.error(err);
+    }
+  }
+
+  // Handle permanent delete
+  async function handlePermanentDelete(id: string) {
+    const confirmReason = window.prompt(
+      "WARNING: This action is permanent and cannot be undone.\n" +
+      "To permanently delete this participant, please enter the reason for permanent deletion:"
+    );
+    if (confirmReason === null) return;
+    if (!confirmReason.trim()) {
+      alert("A reason is required to permanently delete the participant.");
+      return;
+    }
+
+    try {
+      await deleteParticipant(id);
+      setParticipants((prev) => prev.filter((p) => p.id !== id));
+      alert("Registration permanently deleted from database.");
+    } catch (err: any) {
+      alert("Failed to delete permanently. Only admins are permitted to delete records.");
+      console.error(err);
+    }
+  }
+
+  // Populate edit modal fields when Edit clicked
+  function openEditModal(p: Participant) {
+    setEditTitle(p.title || "Mr.");
+    setEditFirstName(p.firstName || "");
+    setEditLastName(p.lastName || "");
+    setEditGender(p.gender || "Prefer not to say");
+    setEditEmail(p.email || "");
+    setEditPhone(p.phone || "");
+    setEditOrg(p.organization || "");
+    setEditCountry(p.country || "Nigeria");
+    setEditCategory(p.category || "Researcher");
+    setEditPayment(p.paymentStatus || "Pending");
+    setEditAccommodation(p.accommodationNeeded || false);
+    setEditAbstract(p.abstractSubmitted || false);
+    setShowEditModal(true);
+  }
+
+  // Handle Edit Form Submit
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedParticipant) return;
+    setSubmittingEdit(true);
+
+    try {
+      const updateData = {
+        title: editTitle,
+        firstName: editFirstName,
+        lastName: editLastName,
+        gender: editGender,
+        email: editEmail,
+        phone: editPhone,
+        organization: editOrg,
+        country: editCountry,
+        category: editCategory,
+        paymentStatus: editPayment,
+        accommodationNeeded: editAccommodation,
+        abstractSubmitted: editAbstract,
+      };
+
+      await updateParticipant(selectedParticipant.id, updateData);
+
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === selectedParticipant.id
+            ? { ...p, ...updateData }
+            : p
+        )
+      );
+
+      // Update selectedParticipant in view
+      setSelectedParticipant((prev) =>
+        prev ? { ...prev, ...updateData } : null
+      );
+
+      alert("Participant details updated successfully!");
+      setShowEditModal(false);
+    } catch (err: any) {
+      alert(err.message || "Failed to update participant details.");
+      console.error(err);
+    } finally {
+      setSubmittingEdit(false);
     }
   }
 
@@ -507,13 +668,15 @@ export default function AdminDashboardPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="rounded-full bg-[var(--color-forest)] hover:bg-[var(--color-forest-deep)] text-white px-5 py-2 text-xs font-semibold shadow-sm flex items-center gap-1.5 cursor-pointer"
-            >
-              ➕ Add Participant
-            </button>
-            {activeTab === "registrations" ? (
+            {user.role === "admin" && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="rounded-full bg-[var(--color-forest)] hover:bg-[var(--color-forest-deep)] text-white px-5 py-2 text-xs font-semibold shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                ➕ Add Participant
+              </button>
+            )}
+            {activeTab === "registrations" && user.role === "admin" && (
               <button
                 onClick={handleExportTotalRegistered}
                 disabled={participants.length === 0}
@@ -521,7 +684,8 @@ export default function AdminDashboardPage() {
               >
                 📥 Export Total Registered (CSV)
               </button>
-            ) : (
+            )}
+            {activeTab === "attendance" && (
               <button
                 onClick={handleExportDailyAttendance}
                 disabled={dailyPresentCount === 0}
@@ -541,19 +705,21 @@ export default function AdminDashboardPage() {
 
         {/* Tab Selector */}
         <div className="flex border-b border-black/10 mb-8 space-x-8">
-          <button
-            onClick={() => setActiveTab("registrations")}
-            className={`pb-4 text-sm font-semibold transition-colors cursor-pointer relative ${
-              activeTab === "registrations"
-                ? "text-[var(--color-forest)] font-bold"
-                : "text-[var(--color-ink-soft)] hover:text-[var(--color-forest)]"
-            }`}
-          >
-            Registrations Manager
-            {activeTab === "registrations" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-forest)] rounded-full" />
-            )}
-          </button>
+          {user.role === "admin" && (
+            <button
+              onClick={() => setActiveTab("registrations")}
+              className={`pb-4 text-sm font-semibold transition-colors cursor-pointer relative ${
+                activeTab === "registrations"
+                  ? "text-[var(--color-forest)] font-bold"
+                  : "text-[var(--color-ink-soft)] hover:text-[var(--color-forest)]"
+              }`}
+            >
+              Registrations Manager
+              {activeTab === "registrations" && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-forest)] rounded-full" />
+              )}
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("attendance")}
             className={`pb-4 text-sm font-semibold transition-colors cursor-pointer relative ${
@@ -567,6 +733,21 @@ export default function AdminDashboardPage() {
               <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-forest)] rounded-full" />
             )}
           </button>
+          {user.role === "admin" && (
+            <button
+              onClick={() => setActiveTab("recycle")}
+              className={`pb-4 text-sm font-semibold transition-colors cursor-pointer relative ${
+                activeTab === "recycle"
+                  ? "text-[var(--color-forest)] font-bold"
+                  : "text-[var(--color-ink-soft)] hover:text-[var(--color-forest)]"
+              }`}
+            >
+              Recycle Bin ({deletedParticipants.length})
+              {activeTab === "recycle" && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-forest)] rounded-full" />
+              )}
+            </button>
+          )}
         </div>
 
         {/* ==================== TAB 1: REGISTRATIONS MANAGER ==================== */}
@@ -836,12 +1017,20 @@ export default function AdminDashboardPage() {
                       </div>
 
                       {user.role === "admin" && (
-                        <button
-                          onClick={() => handleDelete(selectedParticipant.id)}
-                          className="w-full rounded-full border border-red-200 text-red-600 hover:bg-red-50 font-semibold text-xs py-2 transition mt-2 cursor-pointer"
-                        >
-                          Delete Registration
-                        </button>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => openEditModal(selectedParticipant)}
+                            className="flex-1 rounded-full border border-black/10 hover:bg-black/5 text-[var(--color-ink)] font-semibold text-xs py-2 transition cursor-pointer text-center"
+                          >
+                            ✏️ Edit Details
+                          </button>
+                          <button
+                            onClick={() => handleSoftDelete(selectedParticipant.id)}
+                            className="flex-1 rounded-full border border-red-200 text-red-600 hover:bg-red-50 font-semibold text-xs py-2 transition cursor-pointer text-center"
+                          >
+                            🗑️ Delete Record
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -979,6 +1168,86 @@ export default function AdminDashboardPage() {
                                 onChange={() => handleToggleAttendance(p.id, selectedDay, !!isPresent)}
                                 className="w-5 h-5 rounded border-black/25 text-[var(--color-forest)] focus:ring-[var(--color-forest)] transition cursor-pointer"
                               />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ==================== TAB 3: RECYCLE BIN ==================== */}
+        {activeTab === "recycle" && user.role === "admin" && (
+          <>
+            <div className="rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden mb-6">
+              {loadingData ? (
+                <div className="p-10 text-center text-sm text-[var(--color-ink-soft)]">
+                  Loading recycle bin…
+                </div>
+              ) : deletedParticipants.length === 0 ? (
+                <div className="p-12 text-center text-sm text-[var(--color-ink-soft)]">
+                  <p className="font-semibold text-base text-[var(--color-ink)]">Recycle Bin is empty.</p>
+                  <p className="mt-1">Deleted registration records will appear here.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-black/[0.02] border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
+                        <th className="p-4">Attendee</th>
+                        <th className="p-4">Badge ID</th>
+                        <th className="p-4">Deletion Details</th>
+                        <th className="p-4">Reason for Deletion</th>
+                        <th className="p-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/5">
+                      {deletedParticipants.map((p) => {
+                        const dateObj = p.deletedAt ? new Date(p.deletedAt) : null;
+                        const formattedDate = dateObj
+                          ? dateObj.toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })
+                          : "N/A";
+                        return (
+                          <tr key={p.id} className="hover:bg-black/[0.005] transition">
+                            <td className="p-4">
+                              <p className="font-semibold text-[var(--color-ink)]">
+                                {p.title} {p.firstName} {p.lastName}
+                              </p>
+                              <p className="text-xs text-[var(--color-ink-soft)]">{p.email}</p>
+                            </td>
+                            <td className="p-4 font-mono text-xs">{p.badgeNumber}</td>
+                            <td className="p-4 text-xs text-[var(--color-ink-soft)]">
+                              <p className="font-medium">Deleted by: {p.deletedBy || "System"}</p>
+                              <p className="text-[10px] text-black/40 mt-0.5">{formattedDate}</p>
+                            </td>
+                            <td className="p-4 text-xs text-red-700 bg-red-50/30 max-w-[200px] break-words">
+                              {p.deleteReason || "No reason provided."}
+                            </td>
+                            <td className="p-4 text-center">
+                              <div className="flex justify-center gap-2">
+                                <button
+                                  onClick={() => handleRestore(p.id)}
+                                  className="rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/10 px-3.5 py-1.5 text-xs font-semibold hover:bg-emerald-100 transition cursor-pointer"
+                                >
+                                  🔄 Restore
+                                </button>
+                                <button
+                                  onClick={() => handlePermanentDelete(p.id)}
+                                  className="rounded-full bg-red-50 text-red-700 ring-1 ring-red-600/10 px-3.5 py-1.5 text-xs font-semibold hover:bg-red-100 transition cursor-pointer"
+                                >
+                                  🗑️ Delete Permanently
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1293,6 +1562,229 @@ export default function AdminDashboardPage() {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL OVERLAY: EDIT PARTICIPANT DETAILS ==================== */}
+      {showEditModal && selectedParticipant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs px-4">
+          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-black/10 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-black/5 flex items-center justify-between bg-[var(--color-cream)]">
+              <div>
+                <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-[var(--color-forest)]">
+                  Edit Participant Details
+                </h3>
+                <p className="text-xs text-[var(--color-ink-soft)] font-medium mt-0.5">
+                  Update database records for {selectedParticipant.firstName} {selectedParticipant.lastName}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="w-8 h-8 rounded-full border border-black/10 flex items-center justify-center hover:bg-black/5 transition text-lg text-[var(--color-ink-soft)] font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 bg-black/[0.01]">
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Title
+                    </label>
+                    <select
+                      className="input"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                    >
+                      <option value="Mr.">Mr.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Dr.">Dr.</option>
+                      <option value="Prof.">Prof.</option>
+                      <option value="Engr.">Engr.</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      First Name
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      className="input"
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                    Last Name
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    className="input"
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Gender
+                    </label>
+                    <select
+                      className="input"
+                      value={editGender}
+                      onChange={(e) => setEditGender(e.target.value as any)}
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Participant Category
+                    </label>
+                    <select
+                      className="input"
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value as any)}
+                    >
+                      <option value="Researcher">Researcher</option>
+                      <option value="Policy Maker">Policy Maker</option>
+                      <option value="Industry / Private Sector">Industry / Private Sector</option>
+                      <option value="Farmer">Farmer</option>
+                      <option value="Student">Student</option>
+                      <option value="Development Partner">Development Partner</option>
+                      <option value="Speaker">Speaker</option>
+                      <option value="Sponsor">Sponsor</option>
+                      <option value="Media">Media</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      required
+                      type="email"
+                      className="input"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      required
+                      type="tel"
+                      className="input"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Organization
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      className="input"
+                      value={editOrg}
+                      onChange={(e) => setEditOrg(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Country
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      className="input"
+                      value={editCountry}
+                      onChange={(e) => setEditCountry(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 border-t border-black/5 pt-4">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Payment Status
+                    </label>
+                    <select
+                      className="input"
+                      value={editPayment}
+                      onChange={(e) => setEditPayment(e.target.value as any)}
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="Paid">Paid</option>
+                      <option value="Waived">Waived</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center pt-5">
+                    <label className="inline-flex items-center text-xs font-semibold text-[var(--color-ink-soft)] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editAccommodation}
+                        onChange={(e) => setEditAccommodation(e.target.checked)}
+                        className="w-4 h-4 rounded text-[var(--color-forest)] focus:ring-[var(--color-forest)] border-black/10 mr-2 cursor-pointer"
+                      />
+                      Accommodation
+                    </label>
+                  </div>
+                  <div className="flex items-center pt-5">
+                    <label className="inline-flex items-center text-xs font-semibold text-[var(--color-ink-soft)] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editAbstract}
+                        onChange={(e) => setEditAbstract(e.target.checked)}
+                        className="w-4 h-4 rounded text-[var(--color-forest)] focus:ring-[var(--color-forest)] border-black/10 mr-2 cursor-pointer"
+                      />
+                      Abstract Submitted
+                    </label>
+                  </div>
+                </div>
+
+                <div className="border-t border-black/5 pt-5 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="rounded-full bg-white border border-black/10 px-5 py-2.5 text-xs font-semibold hover:bg-black/5 cursor-pointer text-center"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingEdit}
+                    className="rounded-full bg-[var(--color-forest)] hover:bg-[var(--color-forest-deep)] text-white font-semibold text-xs px-6 py-2.5 cursor-pointer shadow-md disabled:opacity-50 text-center"
+                  >
+                    {submittingEdit ? "Saving Changes…" : "Save Changes"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

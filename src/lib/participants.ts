@@ -139,15 +139,29 @@ async function nextBadgeNumber(): Promise<string> {
   }
 
   const counterRef = doc(db, COUNTERS, "badgeSequence");
-  const nextValue = await runTransaction(db, async (tx) => {
-    const snap = await tx.get(counterRef);
-    const current = snap.exists() ? (snap.data().value as number) : 0;
-    const next = current + 1;
-    tx.set(counterRef, { value: next }, { merge: true });
-    return next;
-  });
-  return `${CONFERENCE_CODE}-${String(nextValue).padStart(5, "0")}`;
+  try {
+    const nextValue = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const current = snap.exists() ? (snap.data().value as number) : 0;
+      const next = current + 1;
+      tx.set(counterRef, { value: next }, { merge: true });
+      return next;
+    });
+    return `${CONFERENCE_CODE}-${String(nextValue).padStart(5, "0")}`;
+  } catch (err: any) {
+    console.error("Firestore error in nextBadgeNumber:", err);
+    if (err.message?.includes("offline") || err.code === "unavailable" || err.message?.includes("failed-precondition")) {
+      throw new Error(
+        "Failed to connect to Firebase. Please verify that:\n" +
+        "1. 'Firestore Database' is created & enabled in your Firebase Console (under Build > Firestore Database).\n" +
+        "2. Your internet connection is active and not blocked by a VPN/firewall.\n" +
+        "3. You restarted your local development server after setting up the environment variables."
+      );
+    }
+    throw err;
+  }
 }
+
 
 export async function uploadParticipantPhoto(participantId: string, file: File) {
   if (!isFirebaseConfigured) {
@@ -246,10 +260,16 @@ export async function getParticipant(id: string): Promise<Participant | null> {
     data.createdAt instanceof Timestamp
       ? data.createdAt.toDate().toISOString()
       : new Date().toISOString();
+  const deletedAt =
+    data.deletedAt instanceof Timestamp
+      ? data.deletedAt.toDate().toISOString()
+      : data.deletedAt;
+
   return {
     id: snap.id,
     ...(data as Omit<Participant, "id" | "createdAt">),
     createdAt,
+    deletedAt,
   };
 }
 
@@ -267,10 +287,15 @@ export async function getAllParticipants(): Promise<Participant[]> {
       data.createdAt instanceof Timestamp
         ? data.createdAt.toDate().toISOString()
         : new Date().toISOString();
+    const deletedAt =
+      data.deletedAt instanceof Timestamp
+        ? data.deletedAt.toDate().toISOString()
+        : data.deletedAt;
     return {
       id: docSnap.id,
       ...(data as Omit<Participant, "id" | "createdAt">),
       createdAt,
+      deletedAt,
     };
   });
 }
@@ -387,7 +412,22 @@ export async function createParticipantsBulk(
   const imported: Participant[] = [];
 
   const counterRef = doc(db, COUNTERS, "badgeSequence");
-  const counterSnap = await getDoc(counterRef);
+  let counterSnap;
+  try {
+    counterSnap = await getDoc(counterRef);
+  } catch (err: any) {
+    console.error("Firestore getDoc error during bulk import:", err);
+    if (err.message?.includes("offline") || err.code === "unavailable" || err.message?.includes("failed-precondition")) {
+      throw new Error(
+        "Failed to connect to Firebase. Please verify that:\n" +
+        "1. 'Firestore Database' is created & enabled in your Firebase Console (under Build > Firestore Database).\n" +
+        "2. Your internet connection is active and not blocked by a VPN/firewall.\n" +
+        "3. You restarted your local development server after setting up the environment variables."
+      );
+    }
+    throw err;
+  }
+  
   let currentVal = counterSnap.exists() ? (counterSnap.data().value as number) : 0;
 
   for (const input of inputs) {
@@ -424,10 +464,96 @@ export async function createParticipantsBulk(
   }
 
   batch.set(counterRef, { value: currentVal }, { merge: true });
-  await batch.commit();
+  
+  try {
+    await batch.commit();
+  } catch (err: any) {
+    console.error("Firestore batch commit error during bulk import:", err);
+    if (err.message?.includes("offline") || err.code === "unavailable" || err.message?.includes("failed-precondition")) {
+      throw new Error(
+        "Failed to commit bulk enrollment to Firebase. Please verify that:\n" +
+        "1. 'Firestore Database' is created & enabled in your Firebase Console (under Build > Firestore Database).\n" +
+        "2. Your internet connection is active and not blocked by a VPN/firewall.\n" +
+        "3. You restarted your local development server after setting up the environment variables."
+      );
+    }
+    throw err;
+  }
 
   return imported;
 }
+
+export async function updateParticipant(
+  id: string,
+  data: Partial<Omit<Participant, "id">>
+): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const index = list.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      list[index] = { ...list[index], ...data } as Participant;
+      saveMockParticipants(list);
+    }
+    return;
+  }
+
+  const { doc, updateDoc } = await import("firebase/firestore");
+  const participantRef = doc(db, PARTICIPANTS, id);
+  await updateDoc(participantRef, data);
+}
+
+export async function softDeleteParticipant(
+  id: string,
+  reason: string,
+  deletedBy: string
+): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const index = list.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      list[index].deleted = true;
+      list[index].deleteReason = reason;
+      list[index].deletedAt = new Date().toISOString();
+      list[index].deletedBy = deletedBy;
+      saveMockParticipants(list);
+    }
+    return;
+  }
+
+  const { doc, updateDoc, serverTimestamp } = await import("firebase/firestore");
+  const participantRef = doc(db, PARTICIPANTS, id);
+  await updateDoc(participantRef, {
+    deleted: true,
+    deleteReason: reason,
+    deletedAt: serverTimestamp(),
+    deletedBy: deletedBy,
+  });
+}
+
+export async function restoreParticipant(id: string): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const index = list.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      list[index].deleted = false;
+      delete list[index].deleteReason;
+      delete list[index].deletedAt;
+      delete list[index].deletedBy;
+      saveMockParticipants(list);
+    }
+    return;
+  }
+
+  const { doc, updateDoc, deleteField } = await import("firebase/firestore");
+  const participantRef = doc(db, PARTICIPANTS, id);
+  await updateDoc(participantRef, {
+    deleted: false,
+    deleteReason: deleteField(),
+    deletedAt: deleteField(),
+    deletedBy: deleteField(),
+  });
+}
+
 
 
 
