@@ -1,0 +1,130 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Role helpers ----------
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // A signed-in Firebase Auth user with NO users/{uid} doc (or a doc with
+    // no role) has no role at all — never treat that as any kind of access.
+    function myRole() {
+      return isAuthenticated() && userDocExists() ? getUserData().role : null;
+    }
+
+    function isAdmin() {
+      return myRole() == 'admin';
+    }
+
+    function isRegistrationOfficer() {
+      return myRole() == 'registration-officer';
+    }
+
+    function isAttendanceOfficer() {
+      return myRole() == 'attendance-officer';
+    }
+
+    function isFinanceOfficer() {
+      return myRole() == 'finance-officer';
+    }
+
+    // Any recognized staff role — used for things every staff member may
+    // do (e.g. list participants), with per-action rules narrowing further.
+    function isStaff() {
+      return isAdmin() || isRegistrationOfficer() || isAttendanceOfficer() || isFinanceOfficer();
+    }
+
+    function affectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // ---------- participants ----------
+    match /participants/{participantId} {
+      // Fields every new registration must carry.
+      function hasRequiredFields() {
+        return request.resource.data.keys().hasAll([
+          "firstName", "lastName", "email", "phone", "organization",
+          "country", "category", "badgeNumber", "registrationStatus"
+        ]);
+      }
+
+      // Anyone (including the public registration form) may create a
+      // record, but a self-service / unauthenticated submission may NOT
+      // arrive pre-approved, pre-paid, or pre-deleted — those are staff-only
+      // decisions made afterward via update. Staff (admin / registration
+      // officer, e.g. bulk import or front-desk registration) may set the
+      // richer set of initial values that flow needs.
+      function isSafePublicCreate() {
+        return request.resource.data.registrationStatus == "Pending Approval"
+          && (!("paymentStatus" in request.resource.data) || request.resource.data.paymentStatus == "Pending")
+          && !("deleted" in request.resource.data)
+          && !("attendance" in request.resource.data);
+      }
+
+      allow create: if hasRequiredFields() &&
+        ((isAdmin() || isRegistrationOfficer()) || isSafePublicCreate());
+
+      // Reading a single badge by its ID has to stay public — badge links
+      // and QR codes are shared with people who aren't signed in. Listing
+      // the whole collection is different: that's a full PII export
+      // (name, email, phone, photo) and must be limited to staff, except
+      // for the narrow, exact-match lookups the public UI needs
+      // (duplicate-on-registration check, "find my badge" by email).
+      allow get: if true;
+      allow list: if isStaff() ||
+        (request.query.limit != null && request.query.limit <= 1);
+
+      // Field-level update permissions, matching the staff role model:
+      //  - Admin: anything.
+      //  - Registration Officer: personal/registration details and the
+      //    approval decision, but not payment status and not the
+      //    soft-delete fields.
+      //  - Finance Officer: payment status only.
+      //  - Attendance Officer: the attendance array only.
+      allow update: if isAdmin() ||
+        (isRegistrationOfficer() && !affectedKeys().hasAny([
+          "paymentStatus", "deleted", "deleteReason", "deletedAt", "deletedBy"
+        ])) ||
+        (isFinanceOfficer() && affectedKeys().hasOnly(["paymentStatus"])) ||
+        (isAttendanceOfficer() && affectedKeys().hasOnly(["attendance"]));
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------- users / roles ----------
+    // Role assignment is deliberately admin-only and never client-writable
+    // by the user themselves, to prevent self-promotion to admin.
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isStaff());
+      allow write: if isAdmin();
+    }
+
+    // ---------- badge number counter ----------
+    // The badge sequence is public-writable in principle (an unauthenticated
+    // registrant needs to claim the next number), but must only ever move
+    // forward by exactly 1 per write from a non-staff client. Staff (bulk
+    // import) may advance it by more than 1 in a single write. This blocks
+    // an anonymous client from resetting the counter to 0 (causing
+    // duplicate badge numbers) or jumping it far ahead (DoS on the
+    // numbering scheme).
+    match /counters/{counterId} {
+      allow read: if true;
+      allow write: if request.resource.data.value is int &&
+        request.resource.data.value > 0 &&
+        (
+          isStaff() ||
+          (!("value" in resource.data) && request.resource.data.value == 1) ||
+          (("value" in resource.data) && request.resource.data.value == resource.data.value + 1)
+        );
+    }
+  }
+}

@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Cross-service check against the same Firestore project's users/{uid}
+    // role doc, so storage enforces the same staff model as firestore.rules.
+    function isStaff() {
+      return request.auth != null &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in
+          ['admin', 'registration-officer', 'attendance-officer', 'finance-officer'];
+    }
+
+    function isValidPhoto() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+    }
+
+    match /participant-photos/{participantId} {
+      allow read: if true;
+
+      // Public write is required so an unauthenticated registrant can
+      // upload their own passport photo. But once a photo exists at this
+      // path, only staff may overwrite it — otherwise anyone who obtains a
+      // participant's shared badge link (which embeds this same ID) could
+      // silently replace their photo with arbitrary image content.
+      // `resource == null` is true only when no object exists yet at this
+      // path (i.e. this is the participant's first/only upload).
+      allow write: if isValidPhoto() && (resource == null || isStaff());
+    }
+  }
+}
