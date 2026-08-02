@@ -104,6 +104,10 @@ export default function AdminDashboardPage() {
   const [newPhone, setNewPhone] = useState("");
   const [newOrg, setNewOrg] = useState("");
   const [newCountry, setNewCountry] = useState("Nigeria");
+  const [newState, setNewState] = useState("");
+  const [newDepartment, setNewDepartment] = useState("");
+  const [newPosition, setNewPosition] = useState("");
+  const [newDietary, setNewDietary] = useState("");
   const [newCategory, setNewCategory] = useState<ParticipantCategory>("Researcher");
   const [newPayment, setNewPayment] = useState<PaymentStatus>("Pending");
   const [newAccommodation, setNewAccommodation] = useState(false);
@@ -636,6 +640,10 @@ export default function AdminDashboardPage() {
         phone: newPhone,
         organization: newOrg,
         country: newCountry,
+        state: newState,
+        department: newDepartment,
+        position: newPosition,
+        dietaryPreference: newDietary,
         category: newCategory,
         paymentStatus: newPayment,
         accommodationNeeded: newAccommodation,
@@ -668,6 +676,10 @@ export default function AdminDashboardPage() {
       setNewPhone("");
       setNewOrg("");
       setNewCountry("Nigeria");
+      setNewState("");
+      setNewDepartment("");
+      setNewPosition("");
+      setNewDietary("");
       setNewAccommodation(false);
       setNewAbstract(false);
       setShowAddModal(false);
@@ -720,6 +732,7 @@ export default function AdminDashboardPage() {
           organization: row.organization || "",
           department: row.department || "",
           position: row.position || "",
+          dietaryPreference: row.dietarypreference || row.dietary_preference || "",
           email: row.email || "",
           phone: row.phone || "",
           category: (row.category || "Researcher") as ParticipantCategory,
@@ -1726,6 +1739,58 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                        State / Region
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Optional"
+                        className="input"
+                        value={newState}
+                        onChange={(e) => setNewState(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                        Department
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Optional"
+                        className="input"
+                        value={newDepartment}
+                        onChange={(e) => setNewDepartment(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                        Position
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Optional"
+                        className="input"
+                        value={newPosition}
+                        onChange={(e) => setNewPosition(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
+                      Dietary Preference
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Vegetarian, none"
+                      className="input"
+                      value={newDietary}
+                      onChange={(e) => setNewDietary(e.target.value)}
+                    />
+                  </div>
+
                   <div className="grid grid-cols-3 gap-3 border-t border-black/5 pt-4">
                     <div>
                       <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
@@ -1784,13 +1849,16 @@ export default function AdminDashboardPage() {
                   <div className="bg-white p-4 rounded-2xl border border-black/5 text-xs text-[var(--color-ink-soft)] space-y-1.5 shadow-sm">
                     <p className="font-bold text-[var(--color-forest)]">CSV Template Formatting Guidelines:</p>
                     <p>
-                      Ensure your CSV columns match the following headers exactly (case-insensitive):
+                      Ensure your CSV columns match the following headers exactly (case-insensitive).
+                      Required: <span className="font-semibold">firstName, lastName, email, phone, organization, country</span>.
+                      Everything else is optional and mirrors the public registration form:
                     </p>
                     <code className="block bg-black/5 p-2 rounded font-mono text-[10px] select-all break-all">
-                      title, firstName, lastName, email, phone, gender, category, organization, country, paymentStatus, accommodationNeeded, abstractSubmitted
+                      title, firstName, lastName, gender, email, phone, organization, country, state, department, position, category, dietaryPreference, paymentStatus, accommodationNeeded, abstractSubmitted
                     </code>
                     <p className="text-[10px] text-black/40 mt-1">
-                      * Values for `accommodationNeeded` and `abstractSubmitted` should be `yes`/`no` or `true`/`false`.
+                      * Values for `accommodationNeeded` and `abstractSubmitted` should be `yes`/`no` or `true`/`false`. Passport
+                      photographs can&rsquo;t be uploaded via CSV — add those individually afterwards if needed.
                     </p>
                   </div>
 
