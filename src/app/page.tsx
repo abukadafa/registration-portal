@@ -23,9 +23,9 @@ export default function Home() {
       <SiteHeader />
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-[var(--color-forest)]">
-        <div className="absolute inset-0 badge-perforation opacity-[0.06]" />
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-20 sm:py-28">
+      <section className="relative z-20 overflow-hidden bg-[var(--color-forest)]">
+        <div className="absolute inset-0 z-0 badge-perforation opacity-[0.06]" />
+        <div className="relative z-10 mx-auto flex max-w-6xl flex-col gap-6 px-6 py-20 sm:py-28">
           <p className="font-[family-name:var(--font-mono)] text-xs uppercase tracking-[0.3em] text-[var(--color-gold-light)]">
             Shehu Musa Yar&rsquo;Adua Centre · Abuja, Nigeria · 9&ndash;13 Aug 2026
           </p>
@@ -55,7 +55,7 @@ export default function Home() {
       </section>
 
       {/* Stats */}
-      <section className="mx-auto -mt-8 grid w-full max-w-6xl grid-cols-2 gap-4 px-6 sm:grid-cols-4">
+      <section className="relative z-10 mx-auto mt-6 grid w-full max-w-6xl grid-cols-2 gap-4 px-6 sm:-mt-8 sm:grid-cols-4">
         {stats.map((s) => (
           <div
             key={s.label}
