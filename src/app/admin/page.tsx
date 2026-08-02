@@ -643,13 +643,23 @@ export default function AdminDashboardPage() {
       };
 
       const record = await createParticipant(input, null);
-      
-      // Auto-approve registrations added by staff directly
-      await updateParticipantStatus(record.id, "Approved");
-      record.registrationStatus = "Approved";
+
+      // Auto-approve registrations added by admin/registration officer
+      // directly. Attendance officers can register a walk-in, but it stays
+      // "Pending Approval" for a registration officer/admin to confirm —
+      // Firestore rules also enforce this (attendance officers can't write
+      // registrationStatus), so this mirrors what the backend allows.
+      if (permissions.canManageParticipants(user?.role ?? null)) {
+        await updateParticipantStatus(record.id, "Approved");
+        record.registrationStatus = "Approved";
+      }
 
       setParticipants((prev) => [record, ...prev]);
-      alert(`Successfully registered and approved ${newFirstName} ${newLastName}!`);
+      alert(
+        permissions.canManageParticipants(user?.role ?? null)
+          ? `Successfully registered and approved ${newFirstName} ${newLastName}!`
+          : `Successfully registered ${newFirstName} ${newLastName}. Their registration is pending approval.`
+      );
       
       // Reset Single Form
       setNewFirstName("");
@@ -803,7 +813,7 @@ export default function AdminDashboardPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {activeTab === "registrations" && permissions.canManageParticipants(user.role) && (
+            {activeTab === "registrations" && permissions.canAddParticipants(user.role) && (
               <button
                 onClick={() => setShowAddModal(true)}
                 className="rounded-full bg-[var(--color-forest)] hover:bg-[var(--color-forest-deep)] text-white px-5 py-2 text-xs font-semibold shadow-sm flex items-center gap-1.5 cursor-pointer"
@@ -818,6 +828,14 @@ export default function AdminDashboardPage() {
                 className="rounded-full bg-white border border-black/10 px-5 py-2 text-xs font-semibold hover:bg-black/5 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
               >
                 📥 Export Total Registered (CSV)
+              </button>
+            )}
+            {activeTab === "attendance" && permissions.canAddParticipants(user.role) && !permissions.canViewRegistrations(user.role) && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="rounded-full bg-[var(--color-forest)] hover:bg-[var(--color-forest-deep)] text-white px-5 py-2 text-xs font-semibold shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                ➕ Add Participant
               </button>
             )}
             {activeTab === "attendance" && permissions.canManageAttendance(user.role) && (
@@ -1547,16 +1565,18 @@ export default function AdminDashboardPage() {
               >
                 Single Entry Form
               </button>
-              <button
-                onClick={() => setAddModalTab("bulk")}
-                className={`py-3.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
-                  addModalTab === "bulk"
-                    ? "border-[var(--color-forest)] text-[var(--color-forest)] font-bold"
-                    : "border-transparent text-[var(--color-ink-soft)] hover:text-[var(--color-forest)]"
-                }`}
-              >
-                Bulk CSV Import
-              </button>
+              {permissions.canManageParticipants(user.role) && (
+                <button
+                  onClick={() => setAddModalTab("bulk")}
+                  className={`py-3.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${
+                    addModalTab === "bulk"
+                      ? "border-[var(--color-forest)] text-[var(--color-forest)] font-bold"
+                      : "border-transparent text-[var(--color-ink-soft)] hover:text-[var(--color-forest)]"
+                  }`}
+                >
+                  Bulk CSV Import
+                </button>
+              )}
             </div>
 
             {/* Modal Scrollable Content */}

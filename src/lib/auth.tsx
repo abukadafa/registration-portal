@@ -45,6 +45,12 @@ export const permissions = {
   isAdmin: (role: UserRole | null) => role === "admin",
   canManageParticipants: (role: UserRole | null) =>
     role === "admin" || role === "registration-officer",
+  // Broader than canManageParticipants: attendance officers may register a
+  // walk-in participant at the door, but (unlike admin/registration officer)
+  // that registration lands as "Pending Approval" rather than being
+  // auto-approved — see handleAddSingle in the admin dashboard.
+  canAddParticipants: (role: UserRole | null) =>
+    role === "admin" || role === "registration-officer" || role === "attendance-officer",
   canManagePayments: (role: UserRole | null) =>
     role === "admin" || role === "finance-officer",
   canManageAttendance: (role: UserRole | null) =>

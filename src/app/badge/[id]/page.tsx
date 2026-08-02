@@ -94,7 +94,15 @@ export default function BadgePage({ params }: { params: Promise<{ id: string }> 
               Save this page&rsquo;s link — it&rsquo;s your personal badge and QR code for check-in
               at every session. Registration status:{" "}
               <span className="font-medium">{participant.registrationStatus}</span>
+              {" · "}Payment status:{" "}
+              <span className="font-medium">{participant.paymentStatus}</span>
             </p>
+            {participant.paymentStatus === "Pending" && (
+              <p className="mt-2 max-w-sm text-center text-xs text-amber-700">
+                Your payment is still pending confirmation. Contact the conference finance desk
+                if you believe this is a mistake.
+              </p>
+            )}
           </>
         )}
       </div>
