@@ -44,12 +44,6 @@ export default function Home() {
             >
               Register for the conference
             </Link>
-            <Link
-              href="/dashboard"
-              className="rounded-full border border-white/30 px-6 py-3 text-sm font-medium text-white transition hover:bg-white/10"
-            >
-              Find my badge
-            </Link>
           </div>
         </div>
       </section>
