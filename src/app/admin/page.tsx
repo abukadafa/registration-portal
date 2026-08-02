@@ -119,7 +119,6 @@ export default function AdminDashboardPage() {
   const [newAbstract, setNewAbstract] = useState(false);
 
   // Bulk Registration Form state
-  const [csvFileContent, setCsvFileContent] = useState<string | null>(null);
   const [csvFileName, setCsvFileName] = useState("");
   const [parsedRowsCount, setParsedRowsCount] = useState(0);
   const [parsedParticipants, setParsedParticipants] = useState<NewParticipantInput[]>([]);
@@ -795,8 +794,7 @@ export default function AdminDashboardPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      setCsvFileContent(text);
-      
+
       const lines = text.split(/\r?\n/);
       if (lines.length < 2) {
         alert("The selected CSV file appears to be empty or missing headers.");
@@ -861,7 +859,6 @@ export default function AdminDashboardPage() {
 
       alert(`Successfully imported ${imported.length} new approved participants! (Skipped ${parsedParticipants.length - imported.length} duplicates)`);
       
-      setCsvFileContent(null);
       setCsvFileName("");
       setParsedRowsCount(0);
       setParsedParticipants([]);

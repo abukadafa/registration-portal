@@ -80,12 +80,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Read mock user from localStorage on load if in mock mode
   useEffect(() => {
     if (!isFirebaseConfigured) {
-      const stored = localStorage.getItem("mock_auth_user");
-      if (stored) {
-        // Deliberately deferred to an effect: localStorage isn't available
-        // during server rendering, so this has to run post-hydration.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setUser(JSON.parse(stored));
+      // Same production guard as signIn(): never restore or grant a mock
+      // session on a live deployment, even from a pre-existing localStorage
+      // entry (e.g. left over from local development against this same
+      // browser profile).
+      if (process.env.NODE_ENV !== "production") {
+        const stored = localStorage.getItem("mock_auth_user");
+        if (stored) {
+          // Deliberately deferred to an effect: localStorage isn't available
+          // during server rendering, so this has to run post-hydration.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setUser(JSON.parse(stored));
+        }
       }
       setLoading(false);
       return;
@@ -151,7 +157,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signIn(email: string, password: string) {
     setError(null);
     if (!isFirebaseConfigured) {
-      // Mock Sign In Logic
+      // SECURITY: mock mode grants full admin access to any email/password
+      // and is intended only for local development without a .env.local.
+      // It must never be reachable in an actual production deployment —
+      // if Firebase env vars were ever missing on the live site, this
+      // refuses to fall back to an open-access mock login instead of
+      // silently granting admin to anyone who visits /login.
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(
+          "Firebase is not configured on this deployment. Staff sign-in is unavailable until " +
+          "NEXT_PUBLIC_FIREBASE_* environment variables are set. Contact the site administrator."
+        );
+      }
+
+      // Mock Sign In Logic (development only)
       // Check if email contains officer, otherwise default to admin
       let role: UserRole = "admin";
       let displayName = "Admin Staff";

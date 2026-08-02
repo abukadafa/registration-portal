@@ -57,7 +57,18 @@ export default function LoginPage() {
 
           {/* Mode Indicator Banner */}
           <div className="mt-6">
-            {isMock ? (
+            {isMock && process.env.NODE_ENV === "production" ? (
+              <div className="rounded-xl bg-red-50 p-4 ring-1 ring-red-500/10 text-xs text-red-800">
+                <p className="font-semibold flex items-center gap-1.5 mb-1">
+                  <span>🚫</span> Staff sign-in unavailable
+                </p>
+                <p>
+                  This deployment is missing its Firebase configuration, so staff sign-in is
+                  disabled until an administrator sets it up. Please contact your site
+                  administrator.
+                </p>
+              </div>
+            ) : isMock ? (
               <div className="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-500/10 text-xs text-amber-800">
                 <p className="font-semibold flex items-center gap-1.5 mb-1">
                   <span>⚠️</span> Developer Mock Mode Active
