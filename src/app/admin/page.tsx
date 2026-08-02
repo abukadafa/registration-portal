@@ -9,10 +9,12 @@ import {
   updateParticipantStatus,
   deleteParticipant,
   toggleAttendance,
+  toggleMaterialIssued,
   createParticipant,
   createParticipantsBulk,
   updateParticipant,
   softDeleteParticipant,
+  bulkSoftDeleteParticipants,
   restoreParticipant,
 } from "@/lib/participants";
 import type { Participant, ParticipantCategory, RegistrationStatus, PaymentStatus, NewParticipantInput } from "@/lib/types";
@@ -79,6 +81,10 @@ export default function AdminDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [regDateFilter, setRegDateFilter] = useState<string>("all");
+
+  // Bulk selection (registrations table)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Attendance Tracker filters
   const [selectedDay, setSelectedDay] = useState<string>("Day 1");
@@ -285,6 +291,88 @@ export default function AdminDashboardPage() {
       alert("Registration moved to the Recycle Bin.");
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete participant.");
+      console.error(err);
+    }
+  }
+
+  // Toggle selection of a single row for bulk actions
+  function toggleSelectRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // Toggle "select all" for the currently filtered rows
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const allSelected = filteredParticipants.every((p) => prev.has(p.id));
+      if (allSelected) {
+        return new Set();
+      }
+      return new Set(filteredParticipants.map((p) => p.id));
+    });
+  }
+
+  // Handle bulk soft delete of selected registrations
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    const reason = window.prompt(
+      `Please enter the reason for deleting these ${selectedIds.size} registrations:`
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("A deletion reason is required.");
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const operator = user?.email || "Unknown Admin";
+      await bulkSoftDeleteParticipants(ids, reason.trim(), operator);
+
+      const idSet = new Set(ids);
+      setParticipants((prev) =>
+        prev.map((p) =>
+          idSet.has(p.id)
+            ? {
+                ...p,
+                deleted: true,
+                deleteReason: reason.trim(),
+                deletedAt: new Date().toISOString(),
+                deletedBy: operator,
+              }
+            : p
+        )
+      );
+      if (selectedParticipant && idSet.has(selectedParticipant.id)) {
+        setSelectedParticipant(null);
+      }
+      setSelectedIds(new Set());
+      alert(`${ids.length} registration(s) moved to the Recycle Bin.`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to delete selected participants.");
+      console.error(err);
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  // Handle toggling whether a participant has collected their conference material
+  async function handleToggleMaterial(id: string, currentIssued: boolean) {
+    try {
+      await toggleMaterialIssued(id, !currentIssued);
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, materialIssued: !currentIssued } : p))
+      );
+    } catch (err) {
+      alert("Failed to update conference material status.");
       console.error(err);
     }
   }
@@ -504,6 +592,7 @@ export default function AdminDashboardPage() {
       "Organization",
       "Country",
       "Checked In Day",
+      "Conference Material Issued",
     ];
 
     const rows = presentList.map((p) => [
@@ -517,6 +606,7 @@ export default function AdminDashboardPage() {
       p.organization,
       p.country,
       selectedDay,
+      p.materialIssued ? "Yes" : "No",
     ]);
 
     const csvContent =
@@ -887,6 +977,30 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
+            {/* Bulk Actions Toolbar */}
+            {permissions.isAdmin(user.role) && selectedIds.size > 0 && (
+              <div className="flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-5 py-3 mb-4">
+                <p className="text-xs font-semibold text-red-700">
+                  {selectedIds.size} participant{selectedIds.size > 1 ? "s" : ""} selected
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedIds(new Set())}
+                    className="rounded-full bg-white border border-black/10 px-4 py-2 text-xs font-semibold hover:bg-black/5 cursor-pointer"
+                  >
+                    Clear Selection
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting}
+                    className="rounded-full bg-red-700 hover:bg-red-800 text-white px-4 py-2 text-xs font-semibold shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {bulkDeleting ? "Deleting…" : `🗑️ Delete Selected (${selectedIds.size})`}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Content Layout */}
             <div className="grid gap-6 lg:grid-cols-3">
               {/* List Table */}
@@ -904,9 +1018,25 @@ export default function AdminDashboardPage() {
                     <table className="w-full text-left border-collapse text-sm">
                       <thead>
                         <tr className="bg-black/[0.02] border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
+                          {permissions.isAdmin(user.role) && (
+                            <th className="p-4 w-10">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  filteredParticipants.length > 0 &&
+                                  filteredParticipants.every((p) => selectedIds.has(p.id))
+                                }
+                                onChange={() => toggleSelectAll()}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-4 h-4 rounded border-black/25 text-[var(--color-forest)] focus:ring-[var(--color-forest)] cursor-pointer"
+                                aria-label="Select all participants"
+                              />
+                            </th>
+                          )}
                           <th className="p-4">Participant</th>
                           <th className="p-4">Badge ID / Date</th>
                           <th className="p-4">Category</th>
+                          <th className="p-4">Payment Status</th>
                           <th className="p-4">Status</th>
                         </tr>
                       </thead>
@@ -929,6 +1059,17 @@ export default function AdminDashboardPage() {
                               }`}
                               onClick={() => setSelectedParticipant(p)}
                             >
+                              {permissions.isAdmin(user.role) && (
+                                <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedIds.has(p.id)}
+                                    onChange={() => toggleSelectRow(p.id)}
+                                    className="w-4 h-4 rounded border-black/25 text-[var(--color-forest)] focus:ring-[var(--color-forest)] cursor-pointer"
+                                    aria-label={`Select ${p.firstName} ${p.lastName}`}
+                                  />
+                                </td>
+                              )}
                               <td className="p-4">
                                 <p className="font-semibold text-[var(--color-ink)]">
                                   {p.title} {p.firstName} {p.lastName}
@@ -942,6 +1083,39 @@ export default function AdminDashboardPage() {
                                 </p>
                               </td>
                               <td className="p-4 text-xs text-[var(--color-ink-soft)]">{p.category}</td>
+                              <td className="p-4" onClick={(e) => permissions.canManagePayments(user.role) && e.stopPropagation()}>
+                                {permissions.canManagePayments(user.role) ? (
+                                  <select
+                                    value={p.paymentStatus}
+                                    onChange={(e) =>
+                                      handlePaymentUpdate(p.id, e.target.value as PaymentStatus)
+                                    }
+                                    className={`rounded-full px-2.5 py-1 text-xs font-semibold border-0 cursor-pointer focus:ring-2 focus:ring-offset-1 ${
+                                      p.paymentStatus === "Paid"
+                                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/10"
+                                        : p.paymentStatus === "Waived"
+                                        ? "bg-sky-50 text-sky-700 ring-1 ring-sky-600/10"
+                                        : "bg-amber-50 text-amber-700 ring-1 ring-amber-600/10"
+                                    }`}
+                                  >
+                                    <option value="Pending">Pending</option>
+                                    <option value="Paid">Paid</option>
+                                    <option value="Waived">Waived</option>
+                                  </select>
+                                ) : (
+                                  <span
+                                    className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                      p.paymentStatus === "Paid"
+                                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/10"
+                                        : p.paymentStatus === "Waived"
+                                        ? "bg-sky-50 text-sky-700 ring-1 ring-sky-600/10"
+                                        : "bg-amber-50 text-amber-700 ring-1 ring-amber-600/10"
+                                    }`}
+                                  >
+                                    {p.paymentStatus}
+                                  </span>
+                                )}
+                              </td>
                               <td className="p-4">
                                 <span
                                   className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -1210,11 +1384,13 @@ export default function AdminDashboardPage() {
                         <th className="p-4">Category</th>
                         <th className="p-4">Organization</th>
                         <th className="p-4 text-center">Attended {selectedDay}</th>
+                        <th className="p-4 text-center">Conference Material Issued</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-black/5">
                       {filteredAttendanceParticipants.map((p) => {
                         const isPresent = p.attendance && p.attendance.includes(selectedDay);
+                        const materialIssued = !!p.materialIssued;
                         return (
                           <tr key={p.id} className="hover:bg-black/[0.005] transition">
                             <td className="p-4">
@@ -1234,6 +1410,15 @@ export default function AdminDashboardPage() {
                                 checked={!!isPresent}
                                 onChange={() => handleToggleAttendance(p.id, selectedDay, !!isPresent)}
                                 className="w-5 h-5 rounded border-black/25 text-[var(--color-forest)] focus:ring-[var(--color-forest)] transition cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={materialIssued}
+                                onChange={() => handleToggleMaterial(p.id, materialIssued)}
+                                title="Check once the participant has collected their conference material to avoid duplicate issuance"
+                                className="w-5 h-5 rounded border-black/25 text-[var(--color-gold)] focus:ring-[var(--color-gold)] transition cursor-pointer"
                               />
                             </td>
                           </tr>

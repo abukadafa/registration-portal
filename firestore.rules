@@ -89,13 +89,14 @@ service cloud.firestore {
       //    approval decision, but not payment status and not the
       //    soft-delete fields.
       //  - Finance Officer: payment status only.
-      //  - Attendance Officer: the attendance array only.
+      //  - Attendance Officer: the attendance array and the conference
+      //    material issued flag only.
       allow update: if isAdmin() ||
         (isRegistrationOfficer() && !affectedKeys().hasAny([
           "paymentStatus", "deleted", "deleteReason", "deletedAt", "deletedBy"
         ])) ||
         (isFinanceOfficer() && affectedKeys().hasOnly(["paymentStatus"])) ||
-        (isAttendanceOfficer() && affectedKeys().hasOnly(["attendance"]));
+        (isAttendanceOfficer() && affectedKeys().hasOnly(["attendance", "materialIssued"]));
 
       allow delete: if isAdmin();
     }

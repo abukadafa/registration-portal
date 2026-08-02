@@ -377,6 +377,25 @@ export async function toggleAttendance(
   }
 }
 
+export async function toggleMaterialIssued(
+  id: string,
+  issued: boolean
+): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const index = list.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      list[index].materialIssued = issued;
+      saveMockParticipants(list);
+    }
+    return;
+  }
+
+  const { doc, updateDoc } = await import("firebase/firestore");
+  const participantRef = doc(db, PARTICIPANTS, id);
+  await updateDoc(participantRef, { materialIssued: issued });
+}
+
 export async function createParticipantsBulk(
   inputs: NewParticipantInput[]
 ): Promise<Participant[]> {
@@ -538,6 +557,41 @@ export async function softDeleteParticipant(
     deletedAt: serverTimestamp(),
     deletedBy: deletedBy,
   });
+}
+
+export async function bulkSoftDeleteParticipants(
+  ids: string[],
+  reason: string,
+  deletedBy: string
+): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const idSet = new Set(ids);
+    const deletedAt = new Date().toISOString();
+    for (const p of list) {
+      if (idSet.has(p.id)) {
+        p.deleted = true;
+        p.deleteReason = reason;
+        p.deletedAt = deletedAt;
+        p.deletedBy = deletedBy;
+      }
+    }
+    saveMockParticipants(list);
+    return;
+  }
+
+  const { writeBatch, doc, serverTimestamp } = await import("firebase/firestore");
+  const batch = writeBatch(db);
+  for (const id of ids) {
+    const participantRef = doc(db, PARTICIPANTS, id);
+    batch.update(participantRef, {
+      deleted: true,
+      deleteReason: reason,
+      deletedAt: serverTimestamp(),
+      deletedBy: deletedBy,
+    });
+  }
+  await batch.commit();
 }
 
 export async function restoreParticipant(id: string): Promise<void> {

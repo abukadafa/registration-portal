@@ -36,6 +36,7 @@ export interface Participant {
   registrationStatus: RegistrationStatus;
   createdAt: string;
   attendance?: string[];
+  materialIssued?: boolean;
   deleted?: boolean;
   deleteReason?: string;
   deletedAt?: string;
