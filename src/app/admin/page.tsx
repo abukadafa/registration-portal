@@ -16,6 +16,8 @@ import {
   softDeleteParticipant,
   bulkSoftDeleteParticipants,
   restoreParticipant,
+  bulkRestoreParticipants,
+  bulkPermanentlyDeleteParticipants,
 } from "@/lib/participants";
 import type { Participant, ParticipantCategory, RegistrationStatus, PaymentStatus, NewParticipantInput } from "@/lib/types";
 import Link from "next/link";
@@ -86,6 +88,10 @@ export default function AdminDashboardPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // Bulk selection (recycle bin table)
+  const [recycleSelectedIds, setRecycleSelectedIds] = useState<Set<string>>(new Set());
+  const [recycleBulkBusy, setRecycleBulkBusy] = useState(false);
+
   // Attendance Tracker filters
   const [selectedDay, setSelectedDay] = useState<string>("Day 1");
   const [attendanceSearch, setAttendanceSearch] = useState("");
@@ -107,7 +113,6 @@ export default function AdminDashboardPage() {
   const [newState, setNewState] = useState("");
   const [newDepartment, setNewDepartment] = useState("");
   const [newPosition, setNewPosition] = useState("");
-  const [newDietary, setNewDietary] = useState("");
   const [newCategory, setNewCategory] = useState<ParticipantCategory>("Researcher");
   const [newPayment, setNewPayment] = useState<PaymentStatus>("Pending");
   const [newAccommodation, setNewAccommodation] = useState(false);
@@ -432,6 +437,98 @@ export default function AdminDashboardPage() {
     }
   }
 
+  // Toggle selection of a single row in the recycle bin
+  function toggleRecycleSelectRow(id: string) {
+    setRecycleSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // Toggle "select all" for the recycle bin
+  function toggleRecycleSelectAll() {
+    setRecycleSelectedIds((prev) => {
+      const allSelected = deletedParticipants.every((p) => prev.has(p.id));
+      if (allSelected) {
+        return new Set();
+      }
+      return new Set(deletedParticipants.map((p) => p.id));
+    });
+  }
+
+  // Handle bulk restore from recycle bin
+  async function handleBulkRestore() {
+    if (recycleSelectedIds.size === 0) return;
+    if (
+      !window.confirm(
+        `Restore ${recycleSelectedIds.size} registration(s) back to the active list?`
+      )
+    ) {
+      return;
+    }
+
+    setRecycleBulkBusy(true);
+    try {
+      const ids = Array.from(recycleSelectedIds);
+      await bulkRestoreParticipants(ids);
+      const idSet = new Set(ids);
+      setParticipants((prev) =>
+        prev.map((p) =>
+          idSet.has(p.id)
+            ? {
+                ...p,
+                deleted: false,
+                deleteReason: undefined,
+                deletedAt: undefined,
+                deletedBy: undefined,
+              }
+            : p
+        )
+      );
+      setRecycleSelectedIds(new Set());
+      alert(`${ids.length} registration(s) restored.`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to restore selected participants.");
+      console.error(err);
+    } finally {
+      setRecycleBulkBusy(false);
+    }
+  }
+
+  // Handle bulk permanent delete from recycle bin
+  async function handleBulkPermanentDelete() {
+    if (recycleSelectedIds.size === 0) return;
+    const confirmReason = window.prompt(
+      `WARNING: This action is permanent and cannot be undone.\n` +
+        `To permanently delete these ${recycleSelectedIds.size} participants, please enter the reason for permanent deletion:`
+    );
+    if (confirmReason === null) return;
+    if (!confirmReason.trim()) {
+      alert("A reason is required to permanently delete the selected participants.");
+      return;
+    }
+
+    setRecycleBulkBusy(true);
+    try {
+      const ids = Array.from(recycleSelectedIds);
+      await bulkPermanentlyDeleteParticipants(ids);
+      const idSet = new Set(ids);
+      setParticipants((prev) => prev.filter((p) => !idSet.has(p.id)));
+      setRecycleSelectedIds(new Set());
+      alert(`${ids.length} registration(s) permanently deleted from the database.`);
+    } catch (err: unknown) {
+      alert("Failed to permanently delete the selected participants. Only admins are permitted to do this.");
+      console.error(err);
+    } finally {
+      setRecycleBulkBusy(false);
+    }
+  }
+
   // Populate edit modal fields when Edit clicked
   function openEditModal(p: Participant) {
     setEditTitle(p.title || "Mr.");
@@ -643,7 +740,6 @@ export default function AdminDashboardPage() {
         state: newState,
         department: newDepartment,
         position: newPosition,
-        dietaryPreference: newDietary,
         category: newCategory,
         paymentStatus: newPayment,
         accommodationNeeded: newAccommodation,
@@ -679,7 +775,6 @@ export default function AdminDashboardPage() {
       setNewState("");
       setNewDepartment("");
       setNewPosition("");
-      setNewDietary("");
       setNewAccommodation(false);
       setNewAbstract(false);
       setShowAddModal(false);
@@ -732,7 +827,6 @@ export default function AdminDashboardPage() {
           organization: row.organization || "",
           department: row.department || "",
           position: row.position || "",
-          dietaryPreference: row.dietarypreference || row.dietary_preference || "",
           email: row.email || "",
           phone: row.phone || "",
           category: (row.category || "Researcher") as ParticipantCategory,
@@ -1466,6 +1560,37 @@ export default function AdminDashboardPage() {
         {/* ==================== TAB 3: RECYCLE BIN ==================== */}
         {activeTab === "recycle" && permissions.canAccessRecycleBin(user.role) && (
           <>
+            {recycleSelectedIds.size > 0 && (
+              <div className="flex items-center justify-between rounded-2xl border border-black/10 bg-white shadow-sm px-5 py-3 mb-4">
+                <p className="text-xs font-semibold text-[var(--color-ink-soft)]">
+                  {recycleSelectedIds.size} participant{recycleSelectedIds.size > 1 ? "s" : ""} selected
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setRecycleSelectedIds(new Set())}
+                    className="rounded-full bg-white border border-black/10 px-4 py-2 text-xs font-semibold hover:bg-black/5 cursor-pointer"
+                  >
+                    Clear Selection
+                  </button>
+                  <button
+                    onClick={handleBulkRestore}
+                    disabled={recycleBulkBusy}
+                    className="rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/10 px-4 py-2 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 cursor-pointer"
+                  >
+                    {recycleBulkBusy ? "Working…" : `🔄 Restore Selected (${recycleSelectedIds.size})`}
+                  </button>
+                  {permissions.isAdmin(user.role) && (
+                    <button
+                      onClick={handleBulkPermanentDelete}
+                      disabled={recycleBulkBusy}
+                      className="rounded-full bg-red-700 hover:bg-red-800 text-white px-4 py-2 text-xs font-semibold shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
+                      {recycleBulkBusy ? "Working…" : `🗑️ Delete Permanently (${recycleSelectedIds.size})`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="rounded-2xl border border-black/5 bg-white shadow-sm overflow-hidden mb-6">
               {loadingData ? (
                 <div className="p-10 text-center text-sm text-[var(--color-ink-soft)]">
@@ -1481,6 +1606,18 @@ export default function AdminDashboardPage() {
                   <table className="w-full text-left border-collapse text-sm">
                     <thead>
                       <tr className="bg-black/[0.02] border-b border-black/5 font-semibold text-[var(--color-ink-soft)]">
+                        <th className="p-4 w-10">
+                          <input
+                            type="checkbox"
+                            checked={
+                              deletedParticipants.length > 0 &&
+                              deletedParticipants.every((p) => recycleSelectedIds.has(p.id))
+                            }
+                            onChange={() => toggleRecycleSelectAll()}
+                            className="w-4 h-4 rounded border-black/25 text-[var(--color-forest)] focus:ring-[var(--color-forest)] cursor-pointer"
+                            aria-label="Select all deleted participants"
+                          />
+                        </th>
                         <th className="p-4">Attendee</th>
                         <th className="p-4">Badge ID</th>
                         <th className="p-4">Deletion Details</th>
@@ -1502,6 +1639,15 @@ export default function AdminDashboardPage() {
                           : "N/A";
                         return (
                           <tr key={p.id} className="hover:bg-black/[0.005] transition">
+                            <td className="p-4">
+                              <input
+                                type="checkbox"
+                                checked={recycleSelectedIds.has(p.id)}
+                                onChange={() => toggleRecycleSelectRow(p.id)}
+                                className="w-4 h-4 rounded border-black/25 text-[var(--color-forest)] focus:ring-[var(--color-forest)] cursor-pointer"
+                                aria-label={`Select ${p.firstName} ${p.lastName}`}
+                              />
+                            </td>
                             <td className="p-4">
                               <p className="font-semibold text-[var(--color-ink)]">
                                 {p.title} {p.firstName} {p.lastName}
@@ -1778,19 +1924,6 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
-                      Dietary Preference
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Vegetarian, none"
-                      className="input"
-                      value={newDietary}
-                      onChange={(e) => setNewDietary(e.target.value)}
-                    />
-                  </div>
-
                   <div className="grid grid-cols-3 gap-3 border-t border-black/5 pt-4">
                     <div>
                       <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-soft)] mb-1">
@@ -1854,11 +1987,10 @@ export default function AdminDashboardPage() {
                       Everything else is optional and mirrors the public registration form:
                     </p>
                     <code className="block bg-black/5 p-2 rounded font-mono text-[10px] select-all break-all">
-                      title, firstName, lastName, gender, email, phone, organization, country, state, department, position, category, dietaryPreference, paymentStatus, accommodationNeeded, abstractSubmitted
+                      title, firstName, lastName, gender, email, phone, organization, country, state, department, position, category, paymentStatus, accommodationNeeded, abstractSubmitted
                     </code>
                     <p className="text-[10px] text-black/40 mt-1">
-                      * Values for `accommodationNeeded` and `abstractSubmitted` should be `yes`/`no` or `true`/`false`. Passport
-                      photographs can&rsquo;t be uploaded via CSV — add those individually afterwards if needed.
+                      * Values for `accommodationNeeded` and `abstractSubmitted` should be `yes`/`no` or `true`/`false`.
                     </p>
                   </div>
 

@@ -49,20 +49,22 @@ export default function Home() {
       </section>
 
       {/* Stats */}
-      <section className="relative z-10 mx-auto mt-6 grid w-full max-w-6xl grid-cols-2 gap-4 px-6 sm:-mt-8 sm:grid-cols-4">
-        {stats.map((s) => (
-          <div
-            key={s.label}
-            className="rounded-2xl bg-white p-5 text-center shadow-lg ring-1 ring-black/5"
-          >
-            <p className="font-[family-name:var(--font-display)] text-3xl font-semibold text-[var(--color-forest)]">
-              {s.value}
-            </p>
-            <p className="text-xs uppercase tracking-wide text-[var(--color-ink-soft)]">
-              {s.label}
-            </p>
-          </div>
-        ))}
+      <section className="relative z-10 mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
+        <div className="grid grid-cols-2 divide-x divide-y divide-black/10 rounded-3xl border border-black/10 bg-white shadow-sm sm:grid-cols-4 sm:divide-y-0">
+          {stats.map((s) => (
+            <div
+              key={s.label}
+              className="flex flex-col items-center justify-center gap-1.5 px-4 py-8 text-center sm:py-10"
+            >
+              <p className="font-[family-name:var(--font-display)] text-4xl font-semibold italic text-[var(--color-forest)] sm:text-5xl">
+                {s.value}
+              </p>
+              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.2em] text-[var(--color-ink-soft)]">
+                {s.label}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
 

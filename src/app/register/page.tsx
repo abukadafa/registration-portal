@@ -34,7 +34,6 @@ const initialState: NewParticipantInput = {
   email: "",
   phone: "",
   category: "Researcher",
-  dietaryPreference: "",
   accommodationNeeded: false,
   abstractSubmitted: false,
   paymentStatus: "Pending",
@@ -43,7 +42,6 @@ const initialState: NewParticipantInput = {
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState<NewParticipantInput>(initialState);
-  const [photo, setPhoto] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +60,7 @@ export default function RegisterPage() {
 
     setSubmitting(true);
     try {
-      const participant = await createParticipant(form, photo);
+      const participant = await createParticipant(form, null);
       router.push(`/badge/${participant.id}`);
     } catch (err) {
       if (err instanceof DuplicateParticipantError) {
@@ -224,22 +222,6 @@ export default function RegisterPage() {
                     <option key={c}>{c}</option>
                   ))}
                 </select>
-              </Field>
-              <Field label="Dietary preference">
-                <input
-                  className="input"
-                  value={form.dietaryPreference}
-                  onChange={(e) => update("dietaryPreference", e.target.value)}
-                  placeholder="e.g. Vegetarian, none"
-                />
-              </Field>
-              <Field label="Passport photograph">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="input file:mr-3 file:rounded-full file:border-0 file:bg-[var(--color-forest)] file:px-3 file:py-1.5 file:text-white"
-                  onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-                />
               </Field>
               <div className="flex flex-col justify-end gap-2 pb-1">
                 <Checkbox

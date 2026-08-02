@@ -329,6 +329,52 @@ export async function updateParticipantStatus(
   await updateDoc(participantRef, { registrationStatus: status });
 }
 
+export async function bulkRestoreParticipants(ids: string[]): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const idSet = new Set(ids);
+    for (const p of list) {
+      if (idSet.has(p.id)) {
+        p.deleted = false;
+        delete p.deleteReason;
+        delete p.deletedAt;
+        delete p.deletedBy;
+      }
+    }
+    saveMockParticipants(list);
+    return;
+  }
+
+  const { writeBatch, doc, deleteField } = await import("firebase/firestore");
+  const batch = writeBatch(db);
+  for (const id of ids) {
+    const participantRef = doc(db, PARTICIPANTS, id);
+    batch.update(participantRef, {
+      deleted: false,
+      deleteReason: deleteField(),
+      deletedAt: deleteField(),
+      deletedBy: deleteField(),
+    });
+  }
+  await batch.commit();
+}
+
+export async function bulkPermanentlyDeleteParticipants(ids: string[]): Promise<void> {
+  if (!isFirebaseConfigured) {
+    const list = getMockParticipants();
+    const idSet = new Set(ids);
+    saveMockParticipants(list.filter((p) => !idSet.has(p.id)));
+    return;
+  }
+
+  const { writeBatch, doc } = await import("firebase/firestore");
+  const batch = writeBatch(db);
+  for (const id of ids) {
+    batch.delete(doc(db, PARTICIPANTS, id));
+  }
+  await batch.commit();
+}
+
 export async function deleteParticipant(id: string): Promise<void> {
   if (!isFirebaseConfigured) {
     const list = getMockParticipants();
